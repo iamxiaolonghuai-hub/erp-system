@@ -1,0 +1,25 @@
+.business-dashboard { max-width: 1600px; margin: 0 auto; color: #1e293b; }
+.layout > .el-container { min-width:0; }
+.el-dialog { max-width:calc(100vw - 24px); }
+@media(max-width:700px) { .layout .el-main {padding:16px;} .toolbar {flex-wrap:wrap;} }
+.dashboard-heading { display:flex; justify-content:space-between; align-items:center; gap:24px; padding:12px 0 28px; }
+.dashboard-eyebrow { color:#0d9488; font-size:12px; font-weight:700; letter-spacing:3px; }
+.dashboard-heading h1 { font-size:28px; letter-spacing:-.8px; margin:9px 0; font-weight:750; }
+.dashboard-heading p { color:#64748b; font-size:14px; margin:0; }
+.dashboard-date { font-size:13px; color:#475569; padding:10px 16px; background:#fff; border:1px solid #e2e8f0; border-radius:24px; white-space:nowrap; }
+.business-dashboard .el-card { border:1px solid #e6ecf2; border-radius:16px; box-shadow:0 4px 20px #0f172a04; }
+.business-dashboard .el-card__header { padding:20px 24px; border-bottom:1px solid #f1f5f9; }
+.business-dashboard .el-row { row-gap:16px; }
+.business-dashboard .el-row > .el-col { flex:1 1 190px; max-width:none; }
+.business-dashboard .grad-card,.business-dashboard .stat-card { background:#fff !important; color:#1e293b !important; border:1px solid #e2e8f0 !important; border-top:3px solid #14b8a6 !important; border-radius:14px !important; padding:24px !important; text-align:left !important; height:100%; box-sizing:border-box; box-shadow:0 4px 16px #0f172a04; }
+.business-dashboard .grad-value,.business-dashboard .stat-value { color:#0f172a !important; font-size:30px !important; font-weight:750; letter-spacing:-.8px; font-variant-numeric:tabular-nums; }
+.business-dashboard .grad-label,.business-dashboard .stat-label,.business-dashboard .stat-sub { color:#64748b !important; font-size:13px; opacity:1 !important; line-height:1.8; }
+.business-dashboard .stat-icon { color:#0d9488; }
+.business-dashboard .grad-label,.business-dashboard .stat-label { white-space:normal; word-break:keep-all; }
+@media(max-width:550px) { .business-dashboard .el-row > .el-col {flex-basis:100% !important;} .business-dashboard .grad-card {min-height:110px;} }
+.business-dashboard .el-col:nth-child(2n) .grad-card,.business-dashboard .el-col:nth-child(2n) .stat-card { border-top-color:#6366f1 !important; }
+.business-dashboard .welcome-card,.business-dashboard .welcome-banner { background:linear-gradient(120deg,#f0fdfa,#eff6ff) !important; color:#1e293b !important; border-radius:16px; }
+.business-dashboard .el-table { --el-table-header-bg-color:#f8fafc; --el-table-border-color:#eef2f6; --el-table-row-hover-bg-color:#f0fdfa; border-radius:10px; }
+.business-dashboard .el-table th { color:#64748b; font-weight:600; }
+.business-dashboard .el-table td { padding:14px 0; }
+@media(max-width:700px) { .dashboard-heading {align-items:flex-start;flex-direction:column;gap:12px;} .dashboard-heading h1 {font-size:24px;} .business-dashboard .chart-header {flex-wrap:wrap;gap:12px;} .business-dashboard .el-row > .el-col {flex-basis:145px;} }

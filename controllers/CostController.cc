@@ -1,0 +1,10 @@
+#include "CostController.h"
+#include "../services/CostService.h"
+namespace erp {void CostController::opening(const drogon::HttpRequestPtr &req,std::function<void(const drogon::HttpResponsePtr &)> &&cb){
+ auto j=req->getJsonObject();if(!j||!j->isObject()){cb(ApiResponse::error(ErrorCode::BAD_REQUEST,"参数错误"));return;}
+ auto user=std::stoll(req->getAttributes()->get<std::string>("user_id"));business::transaction([cb](int code,const std::string &msg,const Json::Value &data){cb(code==ErrorCode::OK?ApiResponse::ok(msg,data):ApiResponse::error(code,msg));},[=](const business::Tx &tx){
+  using namespace business;actor(tx,user);require(!tx->execSqlSync("SELECT 1 FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=? AND r.code='admin'",user).empty(),"仅管理员可登记期初成本",ErrorCode::FORBIDDEN);
+  auto id=j->get("inventory_id",0).asInt64();auto value=j->get("unit_cost","").asString(),reason=j->get("reason","").asString();validateUnitCost(value);require(!reason.empty()&&reason.size()<=255,"请填写成本资料依据");auto rows=tx->execSqlSync("SELECT * FROM inventory WHERE id=? FOR UPDATE",id);require(!rows.empty()&&rows[0]["quantity"].as<int64_t>()>0,"请选择有库存的记录");require(!rows[0]["cost_initialized"].as<int>(),"成本已初始化，不能通过期初入口覆盖");require(rows[0]["quantity"].as<int64_t>()==j->get("book_qty",-1).asInt64(),"库存已经变化，请刷新后重新登记",ErrorCode::CONFLICT);
+  tx->execSqlSync("UPDATE inventory SET cost_value=quantity*CAST(? AS DECIMAL(18,6)),cost_initialized=1 WHERE id=?",value,id);auto latest=tx->execSqlSync("SELECT id FROM stock_records WHERE product_id=? AND warehouse_id=? ORDER BY id DESC LIMIT 1 FOR UPDATE",rows[0]["product_id"].as<int64_t>(),rows[0]["warehouse_id"].as<int64_t>());tx->execSqlSync("INSERT INTO inventory_cost_openings(inventory_id,book_qty,unit_cost,total_value,baseline_record_id,operator_id,reason) SELECT id,quantity,CAST(? AS DECIMAL(18,6)),cost_value,?,?,? FROM inventory WHERE id=?",value,latest.empty()?0:latest[0]["id"].as<int64_t>(),user,reason,id);event(tx,"inventory_cost",id,"opening",user,0,1,reason+" 单位成本="+value);Outcome out;out.message="期初成本已登记，库存数量未改变";return out;
+ },business::requestIdentity(req));
+}}

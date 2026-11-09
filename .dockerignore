@@ -1,0 +1,13 @@
+build*
+**/node_modules
+frontend/dist
+.git
+.env
+**/*.log
+uploads
+config.json
+config.yaml
+models/model.json
+*.tar
+*.tar.gz
+release

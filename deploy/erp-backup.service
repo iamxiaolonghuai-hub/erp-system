@@ -1,0 +1,15 @@
+[Unit]
+Description=ERP backup queue and remote archive verification
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/erp
+EnvironmentFile=/opt/erp/.env
+ExecStart=/usr/bin/python3 /opt/erp/deploy/backup_job.py
+TimeoutStartSec=2h
+TimeoutStopSec=2min
+UMask=0077
+StandardOutput=journal
+StandardError=journal

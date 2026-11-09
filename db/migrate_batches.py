@@ -1,0 +1,8 @@
+exec(__import__('pathlib').Path(__file__).with_name('migrate_operations.py').read_text().split('for table,column,definition')[0])
+for table,column,definition in [('inventory','reserved_qty','INT NOT NULL DEFAULT 0'),('sales_order_items','pending_qty','INT NOT NULL DEFAULT 0')]:
+ if sql(f"SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='{table}' AND column_name='{column}'").strip()=='0':sql(f'ALTER TABLE {table} ADD COLUMN {column} {definition}')
+sql('''CREATE TABLE IF NOT EXISTS order_deliveries (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,delivery_no VARCHAR(64) NOT NULL UNIQUE,order_type VARCHAR(16) NOT NULL,order_id BIGINT UNSIGNED NOT NULL,warehouse_id BIGINT UNSIGNED NOT NULL,amount DECIMAL(14,2) NOT NULL,items JSON NOT NULL,created_by BIGINT UNSIGNED NOT NULL,approved_by BIGINT UNSIGNED NULL,created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,KEY idx_delivery_order(order_type,order_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4''')
+print('Batch deliveries and inventory reservations ready')
+
+for kind,partner,biz in [('sales','customer_id','sale'),('purchase','supplier_id','purchase')]:
+ sql(f"CREATE OR REPLACE VIEW posted_{kind}_activity AS SELECT o.id,o.order_no,o.{partner},o.created_by,3 AS status,d.created_at,d.created_at AS updated_at,d.amount AS total_amount FROM order_deliveries d JOIN {kind}_orders o ON o.id=d.order_id WHERE d.order_type='{kind}' UNION ALL SELECT o.id,o.order_no,o.{partner},o.created_by,3,a.created_at,a.updated_at,a.amount FROM {kind}_orders o JOIN accounts a ON a.biz_no=o.order_no AND a.biz_type='{biz}' WHERE NOT EXISTS(SELECT 1 FROM order_deliveries d WHERE d.order_type='{kind}' AND d.order_id=o.id)")

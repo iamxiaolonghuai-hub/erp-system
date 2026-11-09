@@ -1,0 +1,28 @@
+services:
+  backend:
+    image: erp-backend:2026-11-01-r3
+    build:
+      context: .
+      target: backend
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - uploads:/app/uploads
+    networks: [mysql, app]
+  frontend:
+    image: erp-frontend:2026-11-01-r3
+    build:
+      context: .
+      target: frontend
+    restart: unless-stopped
+    ports:
+      - "${ERP_HTTP_PORT:-8080}:80"
+    depends_on: [backend]
+    networks: [app]
+networks:
+  mysql:
+    external: true
+    name: ${MYSQL_NETWORK:-erp-shared}
+  app:
+volumes:
+  uploads:

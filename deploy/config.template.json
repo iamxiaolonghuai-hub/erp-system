@@ -1,0 +1,6 @@
+{
+  "listeners": [{"address":"0.0.0.0","port":5555,"https":false}],
+  "db_clients": [{"name":"default","rdbms":"mysql","host":"mysql","port":3306,"dbname":"erp_system","user":"erp","passwd":"","is_fast":false,"number_of_connections":10}],
+  "app": {"number_of_threads":4,"document_root":"/app/public","upload_path":"/app/uploads","client_max_body_size":"10M","log":{"log_level":"INFO"}},
+  "custom_config": {"jwt_secret":""}
+}

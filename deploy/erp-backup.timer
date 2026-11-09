@@ -1,0 +1,10 @@
+[Unit]
+Description=Check ERP backup queue every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=5min
+Unit=erp-backup.service
+
+[Install]
+WantedBy=timers.target
