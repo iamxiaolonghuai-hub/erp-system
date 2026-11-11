@@ -79,19 +79,37 @@ void StockOperationService::approve(int64_t operationId,
   require(type=="in" || type=="out" || type=="transfer","单据类型错误");require(qty>0,"数量错误");auto no=row["operation_no"].as<std::string>();
   Json::Value lot;if(!row["lot_details"].isNull()){Json::Reader reader;require(reader.parse(row["lot_details"].as<std::string>(),lot),"批次资料格式错误");}
   if(approve){
+   const auto serialRows = tx->execSqlSync("SELECT serial_no FROM stock_operation_serials WHERE operation_id=? ORDER BY line_no",operationId);
+   std::string serialText;
+   for (const auto &serial : serialRows) {
+    if (!serialText.empty()) serialText += ",";
+    serialText += serial["serial_no"].as<std::string>();
+   }
+   lot["serial_nos"] = serialText;
    if(type=="in" && lot.isMember("unit_cost") && !lot["unit_cost"].asString().empty()){validateUnitCost(lot["unit_cost"].asString());auto v=tx->execSqlSync("SELECT CAST(? AS DECIMAL(18,6))*? AS value",lot["unit_cost"].asString(),qty);lot["incoming_cost_value"]=v[0]["value"].as<std::string>();}
    if(type=="in")stock(tx,pid,to,qty,"stock_in",no,approverId,lot);
-   else if(type=="out")stock(tx,pid,from,-qty,row["biz_type"].as<std::string>()=="scrap"?"scrap_out":"stock_out",no,approverId);
+   else if(type=="out")stock(tx,pid,from,-qty,row["biz_type"].as<std::string>()=="scrap"?"scrap_out":"stock_out",no,approverId,lot);
    else {
     require(from!=to,"调拨仓库必须不同");auto first=std::min(from,to),second=std::max(from,to);
     tx->execSqlSync("INSERT INTO inventory (product_id,warehouse_id,quantity,min_quantity) VALUES (?,?,0,0) ON DUPLICATE KEY UPDATE id=id",pid,first);
     tx->execSqlSync("INSERT INTO inventory (product_id,warehouse_id,quantity,min_quantity) VALUES (?,?,0,0) ON DUPLICATE KEY UPDATE id=id",pid,second);
-    auto moved=stock(tx,pid,from,-qty,"transfer_out",no,approverId);Json::Value target;if(!moved["lot_allocations"].empty())target["lot_allocations"]=moved["lot_allocations"];if(!moved["cost_value"].isNull())target["incoming_cost_value"]=moved["cost_value"];stock(tx,pid,to,qty,"transfer_in",no,approverId,target);
+    const auto destination = tx->execSqlSync(
+        "SELECT quantity FROM inventory WHERE product_id=? AND warehouse_id=? FOR UPDATE",pid,to);
+    require(destination[0]["quantity"].as<int64_t>() + qty <= 2147483647,
+            "目标仓库存容量不足");
+    const auto moved = stock(tx,pid,from,-qty,"transfer_out",no,approverId,lot);
+    Json::Value shipment(Json::objectValue);
+    shipment["lot_allocations"] = moved["lot_allocations"];
+    shipment["serial_nos"] = serialText;
+    if (!moved["cost_value"].isNull()) shipment["incoming_cost_value"] = moved["cost_value"];
+    Json::StreamWriterBuilder writer;
+    tx->execSqlSync("UPDATE stock_operations SET lot_details=? WHERE id=?",
+                    Json::writeString(writer,shipment),operationId);
    }
   }
-  int after=approve?1:2;tx->execSqlSync("UPDATE stock_operations SET status=?,approved_by=?,approved_at=NOW() WHERE id=?",after,approverId,operationId);
+  int after=approve?(type=="transfer"?3:1):2;tx->execSqlSync("UPDATE stock_operations SET status=?,approved_by=?,approved_at=NOW() WHERE id=?",after,approverId,operationId);
   tx->execSqlSync("INSERT INTO stock_operation_logs (operation_id,action,operator_id,remark) VALUES (?,?,?,?)",operationId,approve?"approve":"reject",approverId,remark);
-  event(tx,"stock_operations",operationId,approve?"approve":"reject",approverId,0,after,remark);Outcome out;out.data["operation_id"]=Json::Int64(operationId);out.data["status"]=after;out.message=approve?"已批准，库存与流水已一起提交":"已驳回";return out;
+  event(tx,"stock_operations",operationId,approve?"approve":"reject",approverId,0,after,remark);Outcome out;out.data["operation_id"]=Json::Int64(operationId);out.data["status"]=after;out.message=after==3?"已从来源仓发运，等待目标仓签收":approve?"已批准，库存与流水已一起提交":"已驳回";return out;
  });
 }
 

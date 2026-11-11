@@ -1,5 +1,6 @@
 #include "FinanceActionController.h"
 #include <algorithm>
+#include <regex>
 #include "../services/FinanceActions.h"
 #include "../services/DocumentAccess.h"
 namespace erp {
@@ -35,5 +36,98 @@ void FinanceActionController::list(const HttpRequestPtr &req,std::function<void(
 void FinanceActionController::reviewers(const HttpRequestPtr &req,std::function<void(const HttpResponsePtr &)> &&cb){
  try {auto rows=app().getDbClient()->execSqlSync("SELECT u.id,COALESCE(NULLIF(u.real_name,''),u.username) AS name FROM user_directory u WHERE u.status=1 AND u.id<>? AND (u.department='财务部' OR EXISTS(SELECT 1 FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=u.id AND r.code='admin')) ORDER BY u.id",std::stoll(req->getAttributes()->get<std::string>("user_id")));Json::Value data(Json::arrayValue);for(auto row:rows){Json::Value item;item["id"]=Json::Int64(row["id"].as<int64_t>());item["name"]=row["name"].as<std::string>();data.append(item);}cb(ApiResponse::ok("查询成功",data));}
  catch(const std::exception &){cb(ApiResponse::error(ErrorCode::INTERNAL_ERROR,"复核人查询失败"));}
+}
+
+namespace {
+void validateMonth(const std::string &month) {
+    static const std::regex format("[2-9][0-9]{3}-(0[1-9]|1[0-2])");
+    business::require(std::regex_match(month,format),"请选择有效的会计月份");
+}
+}
+
+void FinanceActionController::period(const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback)
+{
+    using namespace business;
+    try {
+        const auto month = req->getParameter("month");
+        validateMonth(month);
+        const auto begin = month + "-01";
+        auto db = app().getDbClient();
+        auto states = db->execSqlSync(
+            "SELECT first_day,closed_through,GREATEST(first_day,CAST(? AS DATE)) AS period_start,"
+            "LAST_DAY(?) AS period_end,"
+            "GREATEST(first_day,IFNULL(DATE_ADD(closed_through,INTERVAL 1 DAY),first_day)) AS next_start,"
+            "CURRENT_DATE AS today FROM finance_period_control WHERE id=1",begin,begin);
+        require(!states.empty(),"请先执行财务期间迁移",ErrorCode::CONFLICT);
+        auto data = rowJson(states,states[0]);
+        const auto start = data["period_start"].asString(), end = data["period_end"].asString();
+        require(start <= end,"该期间早于台账启用日期");
+        data["can_close"] = start == data["next_start"].asString() && end < data["today"].asString();
+        auto rows = db->execSqlSync(
+            "SELECT account_id,account_type,partner_id,MAX(partner_name) AS partner_name,biz_no,"
+            "SUM(IF(posting_day<?,amount_change-cash_change-offset_change,0)) AS opening,"
+            "SUM(IF(posting_day>=?,amount_change,0)) AS amount_change,"
+            "SUM(IF(posting_day>=?,cash_change,0)) AS cash_change,"
+            "SUM(IF(posting_day>=?,offset_change,0)) AS offset_change,"
+            "SUM(amount_change-cash_change-offset_change) AS closing "
+            "FROM finance_postings WHERE posting_day<=? "
+            "GROUP BY account_id,account_type,partner_id,biz_no "
+            "HAVING opening<>0 OR amount_change<>0 OR cash_change<>0 OR offset_change<>0 "
+            "ORDER BY account_type,partner_id,account_id",start,start,start,start,end);
+        data["rows"] = Json::Value(Json::arrayValue);
+        for (const auto &row : rows) data["rows"].append(rowJson(rows,row));
+        callback(ApiResponse::ok("期间对账",data));
+    } catch (const Error &e) {
+        callback(ApiResponse::error(e.code,e.what()));
+    } catch (const std::exception &e) {
+        LOG_ERROR << e.what();
+        callback(ApiResponse::error(ErrorCode::INTERNAL_ERROR,"期间对账查询失败"));
+    }
+}
+
+void FinanceActionController::closePeriod(const HttpRequestPtr &req,
+    std::function<void(const HttpResponsePtr &)> &&callback)
+{
+    using namespace business;
+    const auto body = req->getJsonObject();
+    try {
+        require(body && (*body)["month"].isString(),"请选择会计月份");
+        const auto month = (*body)["month"].asString();
+        validateMonth(month);
+        const auto user = std::stoll(req->getAttributes()->get<std::string>("user_id"));
+        transaction(
+            [callback](int code,const std::string &message,const Json::Value &data) {
+                callback(code==ErrorCode::OK ? ApiResponse::ok(message,data) : ApiResponse::error(code,message));
+            },
+            [=](const Tx &tx) {
+                actor(tx,user,"财务部",true);
+                const auto rows = tx->execSqlSync(
+                    "SELECT GREATEST(first_day,CAST(? AS DATE)) AS period_start,LAST_DAY(?) AS period_end,"
+                    "IFNULL(DATE_ADD(closed_through,INTERVAL 1 DAY),first_day) AS next_start,"
+                    "CURRENT_DATE AS today FROM finance_period_control WHERE id=1 FOR UPDATE",
+                    month+"-01",month+"-01");
+                require(!rows.empty(),"请先执行财务期间迁移");
+                const auto row = rows[0];
+                const auto start = row["period_start"].as<std::string>();
+                const auto end = row["period_end"].as<std::string>();
+                require(start == row["next_start"].as<std::string>() && start <= end
+                        && end < row["today"].as<std::string>(),
+                        "只能顺序结账，且当月结束后才可结账",ErrorCode::CONFLICT);
+                const auto pending = tx->execSqlSync(
+                    "SELECT id FROM finance_actions WHERE status=0 AND pay_date<=? LIMIT 1 FOR UPDATE",end);
+                require(pending.empty(),"仍有待复核的财务申请，请先处理",ErrorCode::CONFLICT);
+                tx->execSqlSync("INSERT INTO finance_period_closures(period_start,period_end,closed_by) VALUES(?,?,?)",start,end,user);
+                tx->execSqlSync("UPDATE finance_period_control SET closed_through=? WHERE id=1",end);
+                Outcome out;
+                out.message = "期间已结账";
+                out.data["closed_through"] = end;
+                return out;
+            },requestIdentity(req));
+    } catch (const Error &e) {
+        callback(ApiResponse::error(e.code,e.what()));
+    } catch (const std::exception &) {
+        callback(ApiResponse::error(ErrorCode::BAD_REQUEST,"结账参数错误"));
+    }
 }
 }

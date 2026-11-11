@@ -20,12 +20,21 @@ class StockOperationController
     // 库存操作单列表
     ADD_METHOD_TO(StockOperationController::list, "/api/stock/operations",
                   drogon::Get, "erp::JwtAuthMiddleware");
+    ADD_METHOD_TO(StockOperationController::receiveTransfer, "/api/stock/transfer/receive",
+                  drogon::Post, "erp::JwtAuthMiddleware");
+    ADD_METHOD_TO(StockOperationController::serialHistory, "/api/stock/serials",
+                  drogon::Get, "erp::JwtAuthMiddleware");
+    ADD_METHOD_TO(StockOperationController::openingSerials, "/api/stock/serials/opening",
+                  drogon::Post, "erp::JwtAuthMiddleware");
     METHOD_LIST_END
+    void serialHistory(const drogon::HttpRequestPtr &, std::function<void(const drogon::HttpResponsePtr &)> &&);
+    void openingSerials(const drogon::HttpRequestPtr &, std::function<void(const drogon::HttpResponsePtr &)> &&);
 
     void create(const drogon::HttpRequestPtr &req,
                 std::function<void(const drogon::HttpResponsePtr &)> &&callback);
     void approve(const drogon::HttpRequestPtr &req,
                  std::function<void(const drogon::HttpResponsePtr &)> &&callback);
+    void receiveTransfer(const drogon::HttpRequestPtr &, std::function<void(const drogon::HttpResponsePtr &)> &&);
     void list(const drogon::HttpRequestPtr &req,
               std::function<void(const drogon::HttpResponsePtr &)> &&callback);
 };

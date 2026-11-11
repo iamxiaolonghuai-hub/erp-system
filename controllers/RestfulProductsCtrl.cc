@@ -33,9 +33,21 @@ void saveProduct(const HttpRequestPtr &req, std::function<void(const HttpRespons
         auto suppliers = db->execSqlSync("SELECT id FROM suppliers WHERE id = ? AND status = 1", supplier);
         if (suppliers.empty()) { fail("请选择有效的启用供应商", k400BadRequest); return; }
         if (id) {
+            const auto current = db->execSqlSync("SELECT has_serial,batch_enabled,expiry_enabled FROM products WHERE id=?",id);
+            if (current.empty()) { fail("商品不存在", k404NotFound); return; }
+            const auto product = current[0];
+            if (serial!=product["has_serial"].as<int>() || batch!=product["batch_enabled"].as<int>()
+                || expiry!=product["expiry_enabled"].as<int>()) {
+                if (!db->execSqlSync("SELECT id FROM stock_operations WHERE product_id=? AND type='transfer' AND status=3 LIMIT 1",id).empty()) {
+                    fail("仍有在途调拨，签收后才可修改追踪方式",k400BadRequest);return;
+                }
+                if ((serial!=product["has_serial"].as<int>() || batch!=product["batch_enabled"].as<int>())
+                    && !db->execSqlSync("SELECT id FROM inventory_serial_units WHERE product_id=? LIMIT 1",id).empty()) {
+                    fail("已有序列号台账，不能改变序列号或批次管理方式",k400BadRequest);return;
+                }
+            }
             if(!batch && !db->execSqlSync("SELECT id FROM inventory_lots WHERE product_id=? LIMIT 1",id).empty()){fail("已有批次记录，不可关闭批次管理",k400BadRequest);return;}
             if(expiry && !db->execSqlSync("SELECT id FROM inventory_lots WHERE product_id=? AND quantity>0 AND (manufactured_on IS NULL OR expires_on IS NULL) LIMIT 1",id).empty()){fail("已有批次缺少日期，不能直接开启效期管理",k400BadRequest);return;}
-            if (db->execSqlSync("SELECT id FROM products WHERE id = ?", id).empty()) { fail("商品不存在", k404NotFound); return; }
             db->execSqlSync("UPDATE products SET sku=?, name=?, unit=?, spec=?, price=?, supplier_id=?, has_serial=?,batch_enabled=?,expiry_enabled=? WHERE id=?", sku, name, (*j).get("unit", "").asString(), (*j).get("spec", "").asString(), price, supplier, serial, batch,expiry,id);
         } else {
             auto result = db->execSqlSync("INSERT INTO products (sku,name,unit,spec,price,supplier_id,has_serial,batch_enabled,expiry_enabled) VALUES (?,?,?,?,?,?,?,?,?)", sku, name, (*j).get("unit", "").asString(), (*j).get("spec", "").asString(), price, supplier, serial,batch,expiry);
@@ -134,6 +146,13 @@ void RestfulProductsCtrl::updateSerial(
     try
     {
         int hasSerial = (*json)["has_serial"].asInt() ? 1 : 0;
+        const auto current = dbClientPtr->execSqlSync("SELECT has_serial FROM products WHERE id=?",id);
+        if (!current.empty() && current[0]["has_serial"].as<int>() != hasSerial &&
+            (!dbClientPtr->execSqlSync("SELECT id FROM inventory_serial_units WHERE product_id=? LIMIT 1",id).empty()
+             || !dbClientPtr->execSqlSync("SELECT id FROM stock_operations WHERE product_id=? AND type='transfer' AND status=3 LIMIT 1",id).empty())) {
+            callback(erp::ApiResponse::error(erp::ErrorCode::CONFLICT,"已有序列号台账或在途调拨，不能修改序列号设置"));
+            return;
+        }
         auto result = dbClientPtr->execSqlSync(
             "UPDATE products SET has_serial = ? WHERE id = ?", hasSerial,
             id);

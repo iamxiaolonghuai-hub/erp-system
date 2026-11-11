@@ -32,6 +32,27 @@ Json::Value changeLots(const Tx &tx,int64_t pid,int64_t wid,int64_t delta,int64_
   else{auto lot=found[0];require((lot["manufactured_on"].isNull()?"":lot["manufactured_on"].as<std::string>())==made&&(lot["expires_on"].isNull()?"":lot["expires_on"].as<std::string>())==expiry,"同一批次日期不能改变");id=lot["id"].as<int64_t>();tx->execSqlSync("UPDATE inventory_lots SET quantity=quantity+? WHERE id=?",delta,id);}
   tx->execSqlSync("INSERT INTO lot_movements(lot_id,change_qty,biz_type,biz_no,operator_id) VALUES(?,?,?,?,?)",id,delta,type,no,user);
  }else{
+  if (details["lot_allocations"].isArray()) {
+   int64_t assigned=0;
+   for (const auto &allocation : details["lot_allocations"]) {
+    const auto name=allocation["lot_no"].asString();
+    const auto qty=allocation["quantity"].asInt64();
+    auto matched=std::find_if(lots.begin(),lots.end(),[&](const auto &row){return row["lot_no"].template as<std::string>()==name;});
+    require(matched!=lots.end() && qty>0 && qty<=-delta-assigned,"序列号批次分配错误");
+    const auto row=*matched;
+    const bool expired=!row["expired"].isNull() && row["expired"].as<int>();
+    require(!expired || type=="scrap_out" || type=="purchase_return" || type=="transfer_out",
+            "过期批次禁止普通出库");
+    require(qty<=row["quantity"].as<int64_t>(),"序列号所在批次库存不足");
+    const auto lotId=row["id"].as<int64_t>();
+    tx->execSqlSync("UPDATE inventory_lots SET quantity=quantity-? WHERE id=?",qty,lotId);
+    tx->execSqlSync("INSERT INTO lot_movements(lot_id,change_qty,biz_type,biz_no,operator_id) VALUES (?,?,?,?,?)",
+                    lotId,-qty,type,no,user);
+    assigned+=qty;
+   }
+   require(assigned==-delta,"序列号批次分配数量不一致");
+   return details["lot_allocations"];
+  }
   int64_t needed=-delta;for(auto lot:lots){if(!needed)break;auto q=lot["quantity"].as<int64_t>();bool expired=!lot["expired"].isNull()&&lot["expired"].as<int>();if(expired&&type!="scrap_out"&&type!="purchase_return"&&type!="transfer_out")continue;auto take=std::min(q,needed);if(!take)continue;Json::Value assigned;assigned["lot_no"]=lot["lot_no"].as<std::string>();assigned["manufactured_on"]=lot["manufactured_on"].isNull()?"":lot["manufactured_on"].as<std::string>();assigned["expires_on"]=lot["expires_on"].isNull()?"":lot["expires_on"].as<std::string>();assigned["quantity"]=Json::Int64(take);allocations.append(assigned);auto id=lot["id"].as<int64_t>();tx->execSqlSync("UPDATE inventory_lots SET quantity=quantity-? WHERE id=?",take,id);tx->execSqlSync("INSERT INTO lot_movements(lot_id,change_qty,biz_type,biz_no,operator_id) VALUES(?,?,?,?,?)",id,-take,type,no,user);needed-=take;}require(needed==0,"可出库批次数量不足，过期批次禁止普通销售或普通调整出库",ErrorCode::STOCK_NOT_ENOUGH);
  }
  return allocations;

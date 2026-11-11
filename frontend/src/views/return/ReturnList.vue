@@ -238,6 +238,10 @@
         <el-form-item label="物流单号" required>
           <el-input v-model="whForm.logistics_no" placeholder="运单号" />
         </el-form-item>
+        <el-form-item v-for="item in whSerialItems" :key="item.id"
+          :label="`${item.product_name} · ${item.direction === 'replace' ? '换出' : '退货'}`">
+          <el-input v-model="item.serial_nos" :placeholder="`填写 ${item.quantity} 个序列号，以逗号分隔`" />
+        </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="whForm.remark" type="textarea" placeholder="可选" />
         </el-form-item>
@@ -343,6 +347,7 @@ const form = reactive({
 
 // 仓库确认弹窗（填物流）
 const whVisible = ref(false)
+const whSerialItems = ref<{id: number; product_name: string; direction?: string; quantity: number; serial_nos: string}[]>([])
 const whRow = ref<any | null>(null)
 const whForm = reactive({ logistics_company: '', logistics_no: '', remark: '' })
 const whTitle = computed(() => {
@@ -552,7 +557,13 @@ async function approve(row: any, approveFlag: boolean) {
   }
 }
 
-function warehouseConfirm(row: any) {
+async function warehouseConfirm(row: any) {
+  try {
+    const result = await (isPurchase.value ? getPurchaseReturnItems(row.id) : getSalesReturnItems(row.id))
+    whSerialItems.value = (result.data || [])
+      .filter((item: any) => Number(item.has_serial) === 1)
+      .map((item: any) => ({ ...item, serial_nos: '' }))
+  } catch { return }
   whRow.value = row
   whForm.logistics_company = ''
   whForm.logistics_no = ''
@@ -574,6 +585,7 @@ async function whSubmit() {
       remark: whForm.remark,
       logistics_company: whForm.logistics_company.trim(),
       logistics_no: whForm.logistics_no.trim(),
+      serial_items: whSerialItems.value.map(item => ({ item_id: item.id, serial_nos: item.serial_nos })),
     }
     if (isPurchase.value) {
       await warehousePurchaseReturn(data)

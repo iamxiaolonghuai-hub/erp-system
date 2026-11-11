@@ -110,6 +110,7 @@
         <el-tab-pane label="待审批" name="0" />
         <el-tab-pane label="已批准" name="1" />
         <el-tab-pane label="已驳回" name="2" />
+        <el-tab-pane label="调拨在途" name="3" />
         <el-tab-pane label="全部" name="all" />
       </el-tabs>
       <div class="record-filters">
@@ -157,7 +158,7 @@
         </el-table-column>
         <el-table-column label="状态" width="90">
           <template #default="{ row }">
-            <el-tag :type="statusTag(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
+            <el-tag :type="statusTag(row.status)" size="small">{{ row.type === 'transfer' && row.status === 1 ? (row.transfer_received_at ? '已签收' : '历史已过账') : statusText(row.status) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="created_at" label="提交时间" width="170" />
@@ -166,19 +167,28 @@
         </el-table-column>
         <el-table-column label="审批人" width="170">
           <template #default="{ row }">
-            <template v-if="row.status === 0">-</template>
+            <template v-if="canApprove && row.status === 0">-</template>
             <template v-else>
               <div>{{ row.approver_name || '-' }}</div>
               <div v-if="row.approved_at" style="color: #909399; font-size: 12px">{{ row.approved_at }}</div>
             </template>
           </template>
         </el-table-column>
-        <el-table-column v-if="canApprove" label="操作" width="160" fixed="right">
+        <el-table-column label="签收" min-width="145">
+          <template #default="{ row }">
+            <div v-if="row.transfer_received_at">{{ row.transfer_received_by || '—' }}<br />{{ row.transfer_received_at }}</div>
+            <span v-else>—</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
             <template v-if="row.status === 0">
               <el-button size="small" type="success" @click="doApprove(row, true)">批准</el-button>
               <el-button size="small" type="danger" @click="doApprove(row, false)">驳回</el-button>
             </template>
+            <el-button v-if="canReceive(row)" size="small" type="primary" :loading="receiving === row.id" @click="receive(row.id)">
+              确认签收
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -196,6 +206,7 @@ import {
   getProducts, createStockOperation, approveStockOperation, getStockOperations,
   getSerialInfo,
 } from '@/api/inventory'
+import { post } from '@/utils/request'
 import { getWarehouses } from '@/api/base'
 import { useUserStore } from '@/stores/user'
 import type { Product, Warehouse } from '@/types'
@@ -205,6 +216,25 @@ const canApprove = computed(() => userStore.isLeader || userStore.isAdmin)
 
 const opType = ref('in')
 const listTab = ref('0')
+const receiving = ref<number>()
+function canReceive(row: any) {
+  const user = userStore.userInfo
+  return row.type === 'transfer' && row.status === 3 && Number(row.approved_by) !== Number(user?.id)
+    && (canApprove.value || Number(row.to_warehouse_id) === Number(user?.warehouse_id))
+}
+async function receive(id: number) {
+  try {
+    await ElMessageBox.confirm('确认已收到本单全部货物？签收后计入目标仓库存。', '调拨签收')
+    receiving.value = id
+    const result = await post('/stock/transfer/receive', { operation_id: id, request_id: newRequestId() })
+    ElMessage.success(result.message)
+    await loadList()
+  } catch {
+    // 取消或请求失败由交互组件提示。
+  } finally {
+    receiving.value = undefined
+  }
+}
 const submitting = ref(false)
 const loading = ref(false)
 const products = ref<Product[]>([])
@@ -247,7 +277,7 @@ function typeTag(t: string) {
   return { in: 'success', out: 'warning', transfer: 'info' }[t] || 'info'
 }
 function statusText(s: number) {
-  return { 0: '待审批', 1: '已批准', 2: '已驳回' }[s] || '未知'
+  return { 0: '待审批', 1: '已批准', 2: '已驳回', 3: '在途' }[s] || '未知'
 }
 function statusTag(s: number) {
   return { 0: 'warning', 1: 'success', 2: 'danger' }[s] || 'info'
@@ -377,7 +407,7 @@ async function doApprove(row: any, approve: boolean) {
   }
   try {
     await approveStockOperation({ operation_id: row.id, approve, remark })
-    ElMessage.success(approve ? '已批准，库存已更新' : '已驳回')
+    ElMessage.success(approve && row.type === 'transfer' ? '已发运，等待目标仓签收' : approve ? '已批准，库存已更新' : '已驳回')
     loadList()
   } catch (e) {
   }

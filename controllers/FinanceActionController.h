@@ -9,7 +9,11 @@ public:
  ADD_METHOD_TO(FinanceActionController::submit,"/api/finance/actions",drogon::Post,"erp::JwtAuthMiddleware","erp::RoleAuthMiddleware");
  ADD_METHOD_TO(FinanceActionController::review,"/api/finance/actions/review",drogon::Post,"erp::JwtAuthMiddleware","erp::RoleAuthMiddleware");
  ADD_METHOD_TO(FinanceActionController::reviewers,"/api/finance/reviewers",drogon::Get,"erp::JwtAuthMiddleware","erp::RoleAuthMiddleware");
+ ADD_METHOD_TO(FinanceActionController::period,"/api/finance/period",drogon::Get,"erp::JwtAuthMiddleware","erp::RoleAuthMiddleware");
+ ADD_METHOD_TO(FinanceActionController::closePeriod,"/api/finance/period/close",drogon::Post,"erp::JwtAuthMiddleware","erp::RoleAuthMiddleware");
  METHOD_LIST_END
+ void period(const drogon::HttpRequestPtr &,std::function<void(const drogon::HttpResponsePtr &)> &&);
+ void closePeriod(const drogon::HttpRequestPtr &,std::function<void(const drogon::HttpResponsePtr &)> &&);
  void list(const drogon::HttpRequestPtr &,std::function<void(const drogon::HttpResponsePtr &)> &&);
  void advice(const drogon::HttpRequestPtr &,std::function<void(const drogon::HttpResponsePtr &)> &&);
  void submit(const drogon::HttpRequestPtr &,std::function<void(const drogon::HttpResponsePtr &)> &&);

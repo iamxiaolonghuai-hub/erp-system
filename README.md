@@ -53,7 +53,7 @@ docker compose run --rm --no-deps backend sh -c '
 ```sh
 set -e
 for migration in approvers warehouse_approver order_warehouse reliability \
-  master_import operations batches lots costing backup_settings departments normalized_details
+  master_import operations batches lots costing backup_settings departments normalized_details finance_periods serial_inventory
 do
   docker compose run --rm --no-deps backend python3 "db/migrate_${migration}.py"
 done

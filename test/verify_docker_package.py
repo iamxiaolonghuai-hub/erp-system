@@ -24,7 +24,7 @@ try:
   docker('exec','-i','-e','MYSQL_PWD='+password,mysql,'mysql','-uroot','erp_system',input=(root/'db/schema.sql').read_bytes())
   env.write_text('\n'.join(['DB_HOST='+mysql,'DB_PORT=3306','DB_NAME=erp_system','DB_USER=root','DB_PASSWORD='+password,'JWT_SECRET='+secret])+'\n')
   docker('run','-d','--name',backend,'--network',network,'--network-alias','backend','--env-file',str(env),'erp-backend:2026-11-01-r3')
-  for name in ['migrate_approvers.py','migrate_warehouse_approver.py','migrate_order_warehouse.py','migrate_reliability.py','migrate_master_import.py','migrate_operations.py','migrate_batches.py','migrate_lots.py','migrate_costing.py','migrate_backup_settings.py','migrate_departments.py','migrate_normalized_details.py']:
+  for name in ['migrate_approvers.py','migrate_warehouse_approver.py','migrate_order_warehouse.py','migrate_reliability.py','migrate_master_import.py','migrate_operations.py','migrate_batches.py','migrate_lots.py','migrate_costing.py','migrate_backup_settings.py','migrate_departments.py','migrate_normalized_details.py','migrate_finance_periods.py','migrate_serial_inventory.py']:
    docker('exec',backend,'python3','db/'+name)
   docker('run','-d','--name',frontend,'--network',network,'-p','127.0.0.1::80','erp-frontend:2026-11-01-r3')
   address=docker('port',frontend,'80/tcp').decode().strip();base='http://'+address

@@ -98,6 +98,7 @@ export function approvePurchaseReturn(data: {
 
 // 仓库审核采购退货
 export function warehousePurchaseReturn(data: {
+  serial_items?: { item_id: number; serial_nos: string }[]
   return_id: number
   approve: boolean
   assigned_approver_id?: number
@@ -140,6 +141,7 @@ export function approveSalesReturn(data: {
 
 // 仓库审核销售退货
 export function warehouseSalesReturn(data: {
+  serial_items?: { item_id: number; serial_nos: string }[]
   return_id: number
   approve: boolean
   assigned_approver_id?: number

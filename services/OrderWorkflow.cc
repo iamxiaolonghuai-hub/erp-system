@@ -1,4 +1,5 @@
 #include "ApprovalHandover.h"
+#include "FinancePeriod.h"
 #include "OrderWorkflow.h"
 #include <set>
 #include <map>
@@ -44,6 +45,7 @@ void approveOrder(bool p,int64_t id,bool approve,int64_t user,Callback cb) {
 }
 void processOrder(bool p,bool prepare,int64_t id,bool approve,int64_t user,int64_t requested,const std::string &remark,const std::string &company,const std::string &tracking,Callback cb,const Json::Value &batch,const RequestIdentity &request) {
  transaction(std::move(cb),[=](const Tx &tx){
+  if (approve && !prepare) lockFinancePosting(tx);
   auto rows=tx->execSqlSync("SELECT * FROM "+table(p)+" WHERE id=? FOR UPDATE",id);require(!rows.empty(),"单据不存在");auto row=rows[0];
   auto wid=row["warehouse_id"].isNull()?requested:row["warehouse_id"].as<int64_t>();require(wid>0 && (!requested || requested==wid),"处理仓库必须与单据仓库一致");warehouseAccess(tx,user,wid,!p&&!prepare);
   int before=row["status"].as<int>();require(before==(p||prepare?1:5),"单据状态已变化",ErrorCode::CONFLICT);
@@ -77,9 +79,12 @@ void processOrder(bool p,bool prepare,int64_t id,bool approve,int64_t user,int64
   if(prepare){tx->execSqlSync("UPDATE sales_orders SET warehouse_id=?,status=5,warehouse_confirmed_by=?,logistics_company=?,logistics_no=? WHERE id=?",wid,user,company,tracking,id);event(tx,table(p),id,"prepare",user,before,5,remark);return response(id,5,"本批已备货并预占库存，待领导放行");}
   auto partner=row[p?"supplier_id":"customer_id"].as<int64_t>();auto party=tx->execSqlSync("SELECT name FROM "+std::string(p?"suppliers":"customers")+" WHERE id=? FOR UPDATE",partner);require(!party.empty(),"往来单位不存在");
   auto accounts=tx->execSqlSync("SELECT * FROM accounts WHERE biz_type=? AND biz_no=? FOR UPDATE",p?"purchase":"sale",row["order_no"].as<std::string>());
-  if(accounts.empty())tx->execSqlSync("INSERT INTO accounts(account_type,biz_type,biz_no,partner_id,partner_name,amount,status) VALUES(?,?,?,?,?,?,?)",p?"payable":"receivable",p?"purchase":"sale",row["order_no"].as<std::string>(),partner,party[0]["name"].as<std::string>(),money(total),total==0?1:0);
-  else {require(accounts.size()==1,"原单存在重复账目");auto account=accounts[0];auto next=cents(account["amount"].as<std::string>())+total;tx->execSqlSync("UPDATE accounts SET amount=?,status=? WHERE id=?",money(next),next==cents(account["paid_amount"].as<std::string>())+cents(account["offset_amount"].as<std::string>())?1:0,account["id"].as<int64_t>());}
-  auto delivery=number(p?"IN":"OUT");auto header=tx->execSqlSync("INSERT INTO order_deliveries(delivery_no,order_type,order_id,warehouse_id,amount,created_by,approved_by) VALUES(?,?,?,?,?,?,?)",delivery,p?"purchase":"sales",id,wid,money(total),p?user:row["warehouse_confirmed_by"].as<int64_t>(),user);for(const auto &item:posted)tx->execSqlSync("INSERT INTO order_delivery_items(delivery_id,product_id,quantity,unit_price) VALUES(?,?,?,?)",header.insertId(),item["product_id"].asInt64(),item["quantity"].asInt64(),item["unit_price"].asString());
+  int64_t accountId;
+  if(accounts.empty())accountId=tx->execSqlSync("INSERT INTO accounts(account_type,biz_type,biz_no,partner_id,partner_name,amount,status) VALUES(?,?,?,?,?,?,?)",p?"payable":"receivable",p?"purchase":"sale",row["order_no"].as<std::string>(),partner,party[0]["name"].as<std::string>(),money(total),total==0?1:0).insertId();
+  else {require(accounts.size()==1,"原单存在重复账目");auto account=accounts[0];accountId=account["id"].as<int64_t>();auto next=cents(account["amount"].as<std::string>())+total;tx->execSqlSync("UPDATE accounts SET amount=?,status=? WHERE id=?",money(next),next==cents(account["paid_amount"].as<std::string>())+cents(account["offset_amount"].as<std::string>())?1:0,account["id"].as<int64_t>());}
+  auto delivery=number(p?"IN":"OUT");
+  financePosting(tx,accountId,p?"purchase":"sale",delivery,total,0,0);
+  auto header=tx->execSqlSync("INSERT INTO order_deliveries(delivery_no,order_type,order_id,warehouse_id,amount,created_by,approved_by) VALUES(?,?,?,?,?,?,?)",delivery,p?"purchase":"sales",id,wid,money(total),p?user:row["warehouse_confirmed_by"].as<int64_t>(),user);for(const auto &item:posted)tx->execSqlSync("INSERT INTO order_delivery_items(delivery_id,product_id,quantity,unit_price) VALUES(?,?,?,?)",header.insertId(),item["product_id"].asInt64(),item["quantity"].asInt64(),item["unit_price"].asString());
   int state=complete?3:1;tx->execSqlSync("UPDATE "+table(p)+" SET warehouse_id=?,status=?,"+(p?"warehouse_confirmed_by":"warehouse_approved_by")+"=? WHERE id=?",wid,state,user,id);event(tx,table(p),id,p?"receive":"ship",user,before,state,delivery+" "+remark);auto out=response(id,state,complete?"本批完成，订单已全部收发":"本批已过账，剩余数量待后续处理");out.data["delivery_no"]=delivery;return out;
  },request);
 

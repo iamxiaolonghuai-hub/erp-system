@@ -64,6 +64,7 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '库存管理', icon: 'Box' },
       },
       { path: 'inventory/cost', name: 'AdminInventoryCost', component: () => import('@/views/inventory/InventoryCost.vue'), meta: { title: '库存成本' } },
+      { path: 'inventory/serials', name: 'AdminSerialInventory', component: () => import('@/views/inventory/SerialInventory.vue'), meta: { title: '序列号台账' } },
       { path: 'inventory/lots', name: 'AdminLotInventory', component: () => import('@/views/inventory/LotInventory.vue'), meta: { title: '商品批次库存' } },
       { path: 'warehouse-returns/purchase', name: 'AdminPurchaseReturnQueue', component: () => import('@/views/return/ReturnList.vue'), meta: { title: '采购退货待出库', returnType: 'purchase', warehouseQueue: true } },
       { path: 'warehouse-returns/sales', name: 'AdminSalesReturnQueue', component: () => import('@/views/return/ReturnList.vue'), meta: { title: '销售退换货待处理', returnType: 'sales', warehouseQueue: true } },
@@ -92,6 +93,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/finance/AccountList.vue'),
         meta: { title: '财务管理', icon: 'Money' },
       },
+      { path: 'finance/period-admin', name: 'AdminFinancePeriod', component: () => import('@/views/finance/FinancePeriod.vue'), meta: { title: '期间对账' } },
       { path: 'finance/actions-admin', name: 'AdminFinanceActions', component: () => import('@/views/finance/FinanceActions.vue'), meta: { title: '财务复核' } },
       { path: 'finance/payments-admin', name: 'AdminPayments', component: () => import('@/views/finance/PaymentList.vue'), meta: { title: '收付款与冲正' } },
       {
@@ -208,6 +210,7 @@ const routes: RouteRecordRaw[] = [
       },
       { path: 'warehouse-returns/purchase', name: 'LeaderPurchaseReturnQueue', component: () => import('@/views/return/ReturnList.vue'), meta: { title: '采购退货待出库', returnType: 'purchase', warehouseQueue: true } },
       { path: 'warehouse-returns/sales', name: 'LeaderSalesReturnQueue', component: () => import('@/views/return/ReturnList.vue'), meta: { title: '销售退换货待处理', returnType: 'sales', warehouseQueue: true } },
+      { path: 'inventory/serials', name: 'LeaderSerialInventory', component: () => import('@/views/inventory/SerialInventory.vue'), meta: { title: '序列号台账' } },
       { path: 'inventory/lots', name: 'LeaderLots', component: () => import('@/views/inventory/LotInventory.vue'), meta: { title: '商品批次库存' } },
       {
         path: 'inventory/check',
@@ -286,6 +289,7 @@ const routes: RouteRecordRaw[] = [
       },
       { path: 'warehouse-returns/purchase', name: 'StaffPurchaseReturnQueue', component: () => import('@/views/return/ReturnList.vue'), meta: { title: '采购退货待出库', returnType: 'purchase', warehouseQueue: true } },
       { path: 'warehouse-returns/sales', name: 'StaffSalesReturnQueue', component: () => import('@/views/return/ReturnList.vue'), meta: { title: '销售退换货待处理', returnType: 'sales', warehouseQueue: true } },
+      { path: 'inventory/serials', name: 'StaffSerialInventory', component: () => import('@/views/inventory/SerialInventory.vue'), meta: { title: '序列号台账' } },
       { path: 'inventory/lots', name: 'StaffLots', component: () => import('@/views/inventory/LotInventory.vue'), meta: { title: '商品批次库存' } },
       {
         path: 'inventory/check',
@@ -320,6 +324,7 @@ const routes: RouteRecordRaw[] = [
     redirect: '/finance/home',
     meta: { roles: ['leader', 'staff'] },
     children: [
+      { path: 'period', name: 'FinancePeriod', component: () => import('@/views/finance/FinancePeriod.vue'), meta: { title: '期间对账' } },
       { path: 'my-actions', name: 'FinanceMyActions', component: () => import('@/components/MyApprovalActions.vue'), meta: { title: '我复核的' } },
       { path: 'actions', name: 'FinanceActions', component: () => import('@/views/finance/FinanceActions.vue'), meta: { title: '财务复核' } },
       { path: 'cost', name: 'FinanceInventoryCost', component: () => import('@/views/inventory/InventoryCost.vue'), meta: { title: '库存成本' } },

@@ -1,4 +1,5 @@
 #include "FinanceActions.h"
+#include "FinancePeriod.h"
 #include <algorithm>
 #include <regex>
 namespace erp {
@@ -36,7 +37,7 @@ void submitFinance(const Json::Value &data,int64_t user,Callback callback,const 
   actor(tx,user,"财务部");auto kind=data.get("kind","payment").asString();require(kind=="payment" || kind=="refund" || kind=="offset" || kind=="reverse","不支持的财务操作");
   auto id=data.get("account_id",0).asInt64(),target=data.get("target_account_id",0).asInt64(),payment=data.get("payment_id",0).asInt64(),source=data.get("source_action_id",0).asInt64(),assigned=data.get("assigned_approver_id",0).asInt64();
   auto remark=data.get("remark","").asString(),method=data.get("pay_method","").asString(),when=data.get("pay_date","").asString();
-  require(remark.size()<=255 && method.size()<=32,"备注或支付方式过长");require(!remark.empty() || kind=="payment","退款、抵扣和冲正需要填写原因");date(tx,when);reviewer(tx,assigned,user);
+  require(remark.size()<=255 && method.size()<=32,"备注或支付方式过长");require(!remark.empty() || kind=="payment","退款、抵扣和冲正需要填写原因");date(tx,when);lockFinancePosting(tx,when);reviewer(tx,assigned,user);
   int64_t value=0;
   if(kind=="reverse"){
    require((payment>0)!=(source>0),"请选择一条收付款记录或抵扣记录进行冲正");
@@ -57,11 +58,14 @@ void submitFinance(const Json::Value &data,int64_t user,Callback callback,const 
 }
 void reviewFinance(int64_t id,bool approve,const std::string &remark,int64_t user,Callback callback){
  transaction(std::move(callback),[=](const Tx &tx){
+  if (approve) lockFinancePosting(tx);
   actor(tx,user,"财务部");require(remark.size()<=255,"复核备注过长");auto rows=tx->execSqlSync("SELECT * FROM finance_actions WHERE id=? FOR UPDATE",id);require(!rows.empty(),"财务申请不存在");auto action=rows[0];require(action["status"].as<int>()==0,"申请已处理",ErrorCode::CONFLICT);require(action["created_by"].as<int64_t>()!=user,"经办人与复核人必须不同",ErrorCode::FORBIDDEN);
   auto admin=tx->execSqlSync("SELECT 1 FROM user_roles ur JOIN roles r ON r.id=ur.role_id WHERE ur.user_id=? AND r.code='admin'",user);
   require(!admin.empty() || action["assigned_approver_id"].isNull() || action["assigned_approver_id"].as<int64_t>()==user,"该申请已指定其他复核人",ErrorCode::FORBIDDEN);
   auto aid=action["account_id"].as<int64_t>(),target=action["target_account_id"].isNull()?0:action["target_account_id"].as<int64_t>();auto kind=action["kind"].as<std::string>();int64_t paymentId=0;
   if(approve){
+   lockFinancePosting(tx,action["pay_date"].as<std::string>());
+   const auto actionNo = action["action_no"].as<std::string>();
    auto preliminary=tx->execSqlSync("SELECT * FROM accounts WHERE id=?",aid);require(!preliminary.empty(),"账目不存在");partnerLock(tx,preliminary[0]);
    // Lock all this partner's accounts in a stable order to avoid refund/offset races.
    auto accounts=tx->execSqlSync("SELECT * FROM accounts WHERE partner_id=? AND account_type=? ORDER BY id FOR UPDATE",preliminary[0]["partner_id"].as<int64_t>(),preliminary[0]["account_type"].as<std::string>());
@@ -71,10 +75,14 @@ void reviewFinance(int64_t id,bool approve,const std::string &remark,int64_t use
    if(kind=="offset"){
     auto other=find(target);require(total<0 && amount(other,"amount")>0,"抵扣方向错误");
     updateAccount(tx,aid,paid,offset-value,total);updateAccount(tx,target,amount(other,"paid_amount"),amount(other,"offset_amount")+value,amount(other,"amount"));
+    financePosting(tx,aid,kind,actionNo,0,0,-value);
+    financePosting(tx,target,kind,actionNo,0,0,value);
    }else if(kind=="reverse" && !action["source_action_id"].isNull()){
     auto sourceId=action["source_action_id"].as<int64_t>();auto originals=tx->execSqlSync("SELECT * FROM finance_actions WHERE id=? FOR UPDATE",sourceId);require(!originals.empty(),"原抵扣不存在");auto original=originals[0];
     require(original["kind"].as<std::string>()=="offset" && original["status"].as<int>()==1 && original["reversed_by"].isNull() && original["account_id"].as<int64_t>()==aid && original["target_account_id"].as<int64_t>()==target && amount(original,"amount")==value,"原抵扣已冲正或发生变化",ErrorCode::CONFLICT);
     auto other=find(target);updateAccount(tx,aid,paid,offset+value,total);updateAccount(tx,target,amount(other,"paid_amount"),amount(other,"offset_amount")-value,amount(other,"amount"));
+    financePosting(tx,aid,kind,actionNo,0,0,value);
+    financePosting(tx,target,kind,actionNo,0,0,-value);
     tx->execSqlSync("UPDATE finance_actions SET reversed_by=? WHERE id=?",id,sourceId);
    }else{
     if(kind=="payment"){require(total>0,"正向收付款只能用于正金额账目");delta=value;cash=value;direction=account["account_type"].as<std::string>()=="receivable"?"receive":"pay";}
@@ -86,6 +94,7 @@ void reviewFinance(int64_t id,bool approve,const std::string &remark,int64_t use
      if(delta<0)cashAvailable(tx,account,-delta);
     }
     updateAccount(tx,aid,paid+delta,offset,total);
+    financePosting(tx,aid,kind,actionNo,0,delta,0);
     auto inserted=tx->execSqlSync("INSERT INTO payments (payment_no,account_id,payment_type,amount,pay_method,pay_date,remark,created_by,approved_by,action_id,reversal_of,settlement_amount) VALUES (?,?,?,?,?,?,?,?,?,?,NULLIF(?,0),?)",number(kind=="reverse"?"REV":"PAY"),aid,direction,money(cash),action["pay_method"].as<std::string>(),action["pay_date"].as<std::string>(),action["remark"].as<std::string>(),action["created_by"].as<int64_t>(),user,id,kind=="reverse"?action["payment_id"].as<int64_t>():0,money(delta));paymentId=inserted.insertId();
     if(kind=="reverse")tx->execSqlSync("UPDATE payments SET reversed_by=? WHERE id=?",paymentId,action["payment_id"].as<int64_t>());
     event(tx,"payments",paymentId,kind,user,-1,1,remark);

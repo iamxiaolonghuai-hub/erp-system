@@ -51,6 +51,8 @@ docker compose run --rm --no-deps backend python3 db/migrate_normalized_details.
 docker compose run --rm --no-deps backend python3 db/migrate_departments.py
 
 docker compose run --rm --no-deps backend python3 db/migrate_normalized_details.py
+docker compose run --rm --no-deps backend python3 db/migrate_finance_periods.py
+docker compose run --rm --no-deps backend python3 db/migrate_serial_inventory.py
 ```
 
 迁移需要 ALTER/CREATE 权限。**不要在已有业务库运行 db/schema.sql，它包含 DROP TABLE。**

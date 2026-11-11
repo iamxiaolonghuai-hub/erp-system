@@ -49,6 +49,9 @@
             <template #title>分类管理</template>
           </el-menu-item>
         </el-sub-menu>
+        <el-menu-item index="/purchase/orders"><el-icon><List /></el-icon><template #title>采购管理</template></el-menu-item>
+        <el-menu-item index="/sales/orders"><el-icon><List /></el-icon><template #title>销售管理</template></el-menu-item>
+        <el-menu-item index="/report"><el-icon><List /></el-icon><template #title>统计报表</template></el-menu-item>
         <el-sub-menu index="inventory-group">
           <template #title>
             <el-icon><Box /></el-icon>
@@ -62,6 +65,7 @@
             <el-icon><Switch /></el-icon>
             <template #title>库存调整(含审批)</template>
           </el-menu-item>
+          <el-menu-item index="/inventory/serials"><el-icon><List /></el-icon><template #title>序列号台账</template></el-menu-item>
           <el-menu-item index="/inventory/check">
             <el-icon><Finished /></el-icon>
             <template #title>库存盘点</template>
@@ -71,6 +75,7 @@
           <el-icon><Money /></el-icon>
           <template #title>财务管理</template>
         </el-menu-item>
+        <el-menu-item index="/finance/period-admin"><el-icon><Money /></el-icon><template #title>期间对账</template></el-menu-item>
         <el-menu-item index="/finance/actions-admin"><el-icon><Checked /></el-icon><template #title>财务复核</template></el-menu-item>
         <el-menu-item index="/finance/payments-admin"><el-icon><Money /></el-icon><template #title>收付款与冲正</template></el-menu-item>
         <el-menu-item index="/warehouse-returns/purchase"><el-icon><Checked /></el-icon><template #title>采购退货待出库</template></el-menu-item>

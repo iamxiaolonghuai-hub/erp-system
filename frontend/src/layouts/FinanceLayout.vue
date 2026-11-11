@@ -27,6 +27,7 @@
           <template #title>收付款记录</template>
         </el-menu-item>
         <el-menu-item index="/finance/cost"><el-icon><Money /></el-icon><template #title>库存成本</template></el-menu-item><el-menu-item index="/finance/actions"><el-icon><Checked /></el-icon><template #title>财务复核</template></el-menu-item>
+        <el-menu-item index="/finance/period"><el-icon><Money /></el-icon><template #title>期间对账</template></el-menu-item>
         <el-menu-item index="/finance/my-actions"><el-icon><Checked /></el-icon><template #title>我复核的</template></el-menu-item>
       </el-menu>
     </el-aside>

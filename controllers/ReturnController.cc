@@ -4,6 +4,7 @@
 #include "../services/ApprovalAssignment.h"
 
 #include "../services/ReturnService.h"
+#include "../services/ReturnWorkflow.h"
 #include "../utils/ApiResponse.h"
 
 using namespace drogon;
@@ -101,14 +102,14 @@ void ReturnController::warehousePurchaseReturn(
     std::string logisticsNo = (*json).get("logistics_no", "").asString();
     int64_t operatorId = getOperatorId(req);
 
-    ReturnService::warehousePurchaseReturn(
+    business::warehouseReturn(true,
         returnId, approve, operatorId, remark, logisticsCompany, logisticsNo,
         [callback](int code, const std::string &msg, const Json::Value &data) {
             if (code == ErrorCode::OK)
                 callback(ApiResponse::ok(msg, data));
             else
                 callback(ApiResponse::error(code, msg));
-        });
+        }, (*json)["serial_items"]);
 }
 
 void ReturnController::createSalesReturn(
@@ -187,14 +188,14 @@ void ReturnController::warehouseSalesReturn(
     std::string logisticsNo = (*json).get("logistics_no", "").asString();
     int64_t operatorId = getOperatorId(req);
 
-    ReturnService::warehouseSalesReturn(
+    business::warehouseReturn(false,
         returnId, approve, operatorId, remark, logisticsCompany, logisticsNo,
         [callback](int code, const std::string &msg, const Json::Value &data) {
             if (code == ErrorCode::OK)
                 callback(ApiResponse::ok(msg, data));
             else
                 callback(ApiResponse::error(code, msg));
-        });
+        }, (*json)["serial_items"]);
 }
 
 void ReturnController::listPurchaseReturns(

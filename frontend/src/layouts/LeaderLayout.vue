@@ -123,6 +123,7 @@ const deptDocs = computed(() => {
       { path: '/leader/inventory/check', title: '盘点差异复核', icon: 'Finished' },
       { path: '/leader/base/warehouses', title: '仓库管理', icon: 'Location' },
       { path: '/leader/inventory', title: '库存查询', icon: 'Box' },
+      { path: '/leader/inventory/serials', title: '序列号台账', icon: 'Box' },
       { path: '/leader/inventory/lots', title: '商品批次库存', icon: 'Box' },
     ]
   }

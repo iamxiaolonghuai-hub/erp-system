@@ -101,6 +101,7 @@ const menuItems = computed(() => {
   if (dept === '仓库部') {
     return [
       { path: '/staff/inventory', title: '库存查询', icon: 'Box' },
+      { path: '/staff/inventory/serials', title: '序列号台账', icon: 'Box' },
       { path: '/staff/inventory/lots', title: '商品批次库存', icon: 'Box' },
       { path: '/staff/warehouse-returns/purchase', title: '采购退货待出库', icon: 'RefreshLeft' },
       { path: '/staff/warehouse-returns/sales', title: '销售退换货待处理', icon: 'RefreshLeft' },

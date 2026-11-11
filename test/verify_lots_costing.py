@@ -37,6 +37,12 @@ try:
  op=ok('/stock/operation',warehouse,dict(type='out',product_id=product,from_warehouse_id=1,qty=5,biz_type='scrap',remark=tag));operations.append(op['operation_id']);ok('/stock/operation/approve',admin,dict(operation_id=op['operation_id'],approve=True))
  assert snapshot()=='3:0:1:45.000000'
  transfer=ok('/stock/operation',warehouse,dict(type='transfer',product_id=product,from_warehouse_id=1,to_warehouse_id=2,qty=2,remark=tag));operations.append(transfer['operation_id']);ok('/stock/operation/approve',admin,dict(operation_id=transfer['operation_id'],approve=True))
+ assert sql(f"SELECT status FROM stock_operations WHERE id={transfer['operation_id']}")=='3'
+ assert sql(f"SELECT COUNT(*) FROM stock_records WHERE biz_type='transfer_in' AND biz_no='{transfer['operation_no']}'")=='0'
+ assert api('/stock/transfer/receive',admin,dict(operation_id=transfer['operation_id']))[1]['code']!=0
+ target_signer=next(u for u in users if u['department']=='仓库部' and 'leader' in u['roles'].split(','))
+ ok('/stock/transfer/receive',target_signer,dict(operation_id=transfer['operation_id']))
+ assert api('/stock/transfer/receive',target_signer,dict(operation_id=transfer['operation_id']))[1]['code']!=0
  assert snapshot()=='1:0:1:15.000000'
  assert sql(f'SELECT CONCAT(quantity,":",cost_initialized,":",cost_value) FROM inventory WHERE product_id={product} AND warehouse_id=2')=='2:1:30.000000'
  returned=ok('/sales/return',seller,dict(order_id=sale2['order_id'],warehouse_id=1,items=[dict(product_id=product,quantity=1)]));returns.append(returned['return_id'])

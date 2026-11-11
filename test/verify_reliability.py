@@ -76,14 +76,14 @@ try:
  ok('/sales/outbound',admin,dict(order_id=winner['order_id'],approve=True))
  assert qty(p1)==4
  print('PASS concurrent sales cannot oversell the same product')
- # The destination overflow happens after the source stock update; both must roll back.
+ # An impossible receipt must be rejected before the transfer leaves the source warehouse.
  sql(f'INSERT INTO inventory (product_id,warehouse_id,quantity,min_quantity) VALUES ({p1},2,2147483647,0) ON DUPLICATE KEY UPDATE quantity=2147483647')
  operation=ok('/stock/operation',warehouse_user,dict(type='transfer',product_id=p1,qty=1,from_warehouse_id=1,to_warehouse_id=2,request_id=key()))
  docs.append(('stock_operations',operation['operation_id']))
  failed('/stock/operation/approve',admin,dict(operation_id=operation['operation_id'],approve=True),40000)
  assert qty(p1)==4 and qty(p1,2)==2147483647
  assert count('stock_records',f"biz_no='{operation['operation_no']}'")==0
- print('PASS failed destination movement rolls back the source warehouse')
+ print('PASS destination overflow prevents dispatch and leaves both warehouse balances intact')
  # Return quantity and price are controlled by original order records.
  failed('/sales/return',seller,dict(order_id=sale['order_id'],warehouse_id=1,items=[dict(product_id=p1,quantity=7,price=0)],request_id=key()),40000)
  returned=ok('/sales/return',seller,dict(order_id=sale['order_id'],warehouse_id=1,items=[dict(product_id=p1,quantity=1,price=0)],request_id=key()))

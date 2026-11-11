@@ -1,4 +1,5 @@
 #include "BusinessSupport.h"
+#include "SerialInventory.h"
 #include "LotService.h"
 #include "CostService.h"
 #include <atomic>
@@ -107,14 +108,20 @@ void approval(const Tx &tx,const drogon::orm::Row &row,int64_t id,const std::str
 }
 Json::Value stock(const Tx &tx,int64_t pid,int64_t wid,int64_t delta,const std::string &type,const std::string &no,int64_t id,const Json::Value &lot) {
     require(pid>0 && wid>0 && delta && delta>=-INT_MAX && delta<=INT_MAX,"库存变更参数错误");
-    require(!tx->execSqlSync("SELECT id FROM products WHERE id=?",pid).empty(),"商品不存在");
+    const auto product = tx->execSqlSync("SELECT has_serial,batch_enabled FROM products WHERE id=? FOR SHARE",pid);
+    require(!product.empty(),"商品不存在");
     // Upsert obtains the unique product/warehouse row lock even for a new inventory row.
     tx->execSqlSync("INSERT INTO inventory (product_id,warehouse_id,quantity,min_quantity) VALUES (?,?,0,0) ON DUPLICATE KEY UPDATE id=id",pid,wid);
     auto rows=tx->execSqlSync("SELECT id,quantity,reserved_qty FROM inventory WHERE product_id=? AND warehouse_id=? FOR UPDATE",pid,wid);
     int64_t before=rows[0]["quantity"].as<int64_t>(),after=before+delta;
     require(after>=rows[0]["reserved_qty"].as<int64_t>(),"可用库存不足，不能占用已备货库存",ErrorCode::STOCK_NOT_ENOUGH);
     require(after<=INT_MAX,"库存数量超出范围");
-    auto allocations=changeLots(tx,pid,wid,delta,before,type,no,id,lot);
+    Json::Value details = lot.isObject() ? lot : Json::Value(Json::objectValue);
+    if (delta < 0 || (product[0]["has_serial"].as<int>() && type!="transfer_in" && type!="sales_return"))
+        details.removeMember("lot_allocations");
+    if (product[0]["has_serial"].as<int>())
+        changeSerialStock(tx,pid,wid,delta,before,type,no,id,product[0]["batch_enabled"].as<int>()!=0,details);
+    auto allocations=changeLots(tx,pid,wid,delta,before,type,no,id,details);
     tx->execSqlSync("UPDATE inventory SET quantity=? WHERE id=?",after,rows[0]["id"].as<int64_t>());
     auto cost=moveCost(tx,rows[0]["id"].as<int64_t>(),before,after,delta,lot);
     auto r=tx->execSqlSync("INSERT INTO stock_records (product_id,warehouse_id,change_type,change_qty,before_qty,after_qty,biz_type,biz_no,operator_id) VALUES (?,?,?,?,?,?,?,?,?)",pid,wid,delta>0?"in":"out",delta,before,after,type,no,id);

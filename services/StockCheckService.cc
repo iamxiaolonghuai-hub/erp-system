@@ -26,7 +26,11 @@ void StockCheckService::completeStockCheck(int64_t id,int64_t user,StockCheckCal
   auto lines=tx->execSqlSync("SELECT * FROM stock_check_items WHERE check_id=? ORDER BY product_id",id);require(!lines.empty(),"盘点无明细");int adjusted=0;auto wid=row["warehouse_id"].as<int64_t>();
   for(auto line:lines){auto pid=line["product_id"].as<int64_t>();auto current=tx->execSqlSync("SELECT quantity FROM inventory WHERE product_id=? AND warehouse_id=? FOR UPDATE",pid,wid);
    require(!current.empty() && current[0]["quantity"].as<int64_t>()==line["book_qty"].as<int64_t>(),"盘点后发生出入库，请重新盘点，整单未调整",ErrorCode::CONFLICT);
-   auto diff=line["diff_qty"].as<int64_t>();if(diff){stock(tx,pid,wid,diff,"stock_check",row["check_no"].as<std::string>(),user);++adjusted;}
+   auto diff=line["diff_qty"].as<int64_t>();if(diff){
+     const auto product=tx->execSqlSync("SELECT has_serial FROM products WHERE id=?",pid);
+     require(product.empty() || !product[0]["has_serial"].as<int>(),
+             "序列号商品有盘点差异，请先按具体序列号办理库存调整，再重新盘点");
+     stock(tx,pid,wid,diff,"stock_check",row["check_no"].as<std::string>(),user);++adjusted;}
   }
   tx->execSqlSync("UPDATE stock_checks SET status=1,reviewed_by=? WHERE id=?",user,id);event(tx,"stock_checks",id,"review",user,0,1);Outcome out;out.data["check_id"]=Json::Int64(id);out.data["adjust_count"]=adjusted;out.message="复核通过，所有盘点差异已一起调整";return out;
  });
